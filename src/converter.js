@@ -53,13 +53,15 @@ function dropShadow(effects, S) {
     color: rgbHex(sh.color),
     blur: pt(sh.radius || 0, S),
     angle: (Math.atan2(dy, dx) * 180) / Math.PI,
-    distance: pt(Math.hypot(dx, dy), S),
+    offset: pt(Math.hypot(dx, dy), S),
     opacity: typeof sh.opacity === "number" ? sh.opacity : 0.4,
   };
 }
 
 const pxToPt = (px, S) => px * S.scale * 72;
 const pt = pxToPt;
+// pptxgenjs 的 rectRadius 单位是英寸
+const pxToIn = (px, S) => px * S.scale;
 
 function dashType(node) {
   if (!node.strokeDashes || !node.strokeDashes.length) return undefined;
@@ -161,7 +163,7 @@ function addFrame(slide, frame, size, scaleMode) {
           fill,
         };
         if (node.opacity != null && node.opacity < 1) opts.transparency = (1 - node.opacity) * 100;
-        if (node.cornerRadius) opts.rectRadius = pt(node.cornerRadius, S);
+        if (node.cornerRadius) opts.rectRadius = pxToIn(node.cornerRadius, S);
         slide.addShape("rect", opts);
       }
       (node.children || []).forEach(walk);
@@ -252,7 +254,7 @@ function addShape(slide, node, S, toX, toY, toW, toH, preset) {
   if (shadow) opts.shadow = shadow;
 
   if (preset === "roundRect" && node.cornerRadius) {
-    opts.rectRadius = pt(node.cornerRadius, S);
+    opts.rectRadius = pxToIn(node.cornerRadius, S);
   }
 
   slide.addShape(preset, opts);
