@@ -173,7 +173,7 @@ function addFrame(slide, frame, size, scaleMode) {
     }
   };
 
-  walk(frame);
+  (frame.children || []).forEach(walk);
 }
 
 function addText(slide, t, S, toX, toY, toW, toH) {
