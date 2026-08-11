@@ -1,0 +1,17 @@
+{
+  "name": "frame2ppt",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Figma Custom UI 插件：将选中的 Frame 转换为可编辑 PPT 并下载",
+  "scripts": {
+    "build": "node build.js",
+    "test": "node test/generate-sample.mjs"
+  },
+  "dependencies": {
+    "pptxgenjs": "^3.12.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.2"
+  }
+}
