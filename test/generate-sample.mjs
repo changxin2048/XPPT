@@ -111,7 +111,7 @@ const frame1 = mkFrame({
       absX: 860, absY: 900, width: 200, height: 4,
       rotation: 0, opacity: 1,
       strokes: [{ type: "SOLID", color: { r: 0.7, g: 0.72, b: 0.8 }, opacity: 1 }],
-      strokeWeight: 4, effects: [],
+      strokeWeight: 4, strokeDashes: [5, 5], effects: [],
     },
     {
       type: "STAR",
@@ -126,6 +126,13 @@ const frame1 = mkFrame({
       type: "__IMAGE__",
       name: "产品图",
       absX: 1700, absY: 780, width: 120, height: 120,
+      rotation: 0, opacity: 1,
+      dataUrl: RED_PNG,
+    },
+    {
+      type: "__IMAGE__",
+      name: "横向细线",
+      absX: 400, absY: 900, width: 300, height: 3,
       rotation: 0, opacity: 1,
       dataUrl: RED_PNG,
     },
@@ -203,6 +210,11 @@ console.log("幻灯片页数:", slideKeys.length, "(应为 2)");
 const slide1 = await zip.file(slideKeys[0]).async("string");
 const slide2 = await zip.file(slideKeys[1]).async("string");
 
+// 回归校验：细长图片（如横向分割线）的短边不能被钳制到恰好 1 英寸（914400 EMU）
+const thinClamp = /<a:ext cx="(\d+)" cy="(\d+)"\/>/.test(slide1)
+  ? [...slide1.matchAll(/<a:ext cx="(\d+)" cy="(\d+)"\/>/g)].some((m) => Math.min(+m[1], +m[2]) === 914400 && Math.max(+m[1], +m[2]) > 914400 * 3)
+  : false;
+
 const checks = [
   ["包含主标题文字", slide1.includes("AI 驱动的新一代工作台")],
   ["副标题带字距", slide1.includes("高效协作")],
@@ -211,7 +223,9 @@ const checks = [
   ["圆形", slide1.includes('prst="ellipse"')],
   ["星形", slide1.includes("star5")],
   ["线条", slide1.includes('prst="line"') || slide1.includes("<a:ln " )],
+  ["虚线线条", slide1.includes('prstDash val="dash"')],
   ["内嵌图片", slide1.includes("<p:pic>")],
+  ["细线图片未被钳制为 1 英寸", !thinClamp],
   ["背景纯色填充", slide1.includes("<p:bg>")],
   ["第二页标题", slide2.includes("核心指标一览")],
   ["三角形状", slide2.includes('prst="triangle"')],

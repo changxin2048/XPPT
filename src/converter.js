@@ -24,6 +24,11 @@ const STAR_PRESETS = { 4: "star4Point", 5: "star5Point", 6: "star6Point", 7: "st
 
 const to2 = (v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0");
 
+// 图片/形状尺寸防御：宽度或高度缺失、为 0 或 NaN 时退回极小值，
+// 避免被 pptxgenjs 的 `h: NaN || 1`（或 `0 || 1`）兜底成恰好 1 英寸，
+// 导致横向线高度/竖向线宽度突变
+const posDim = (v) => (typeof v === "number" && isFinite(v) && v > 0 ? v : 0.001);
+
 export function rgbHex(c) {
   if (!c) return "000000";
   return to2(c.r * 255) + to2(c.g * 255) + to2(c.b * 255);
@@ -48,13 +53,20 @@ function dropShadow(effects, S) {
   if (!sh) return undefined;
   const dx = sh.offset ? sh.offset.x : 0;
   const dy = sh.offset ? sh.offset.y : 0;
+  // Figma 投影透明度在 color.a 中（0-1），而非独立的 opacity 字段
+  const opacity =
+    sh.color && typeof sh.color.a === "number"
+      ? sh.color.a
+      : typeof sh.opacity === "number"
+      ? sh.opacity
+      : 0.4;
   return {
     type: "outer",
     color: rgbHex(sh.color),
     blur: pt(sh.radius || 0, S),
     angle: (Math.atan2(dy, dx) * 180) / Math.PI,
     offset: pt(Math.hypot(dx, dy), S),
-    opacity: typeof sh.opacity === "number" ? sh.opacity : 0.4,
+    opacity: Math.max(0, Math.min(1, opacity)),
   };
 }
 
@@ -69,14 +81,31 @@ function dashType(node) {
   return first >= 3 ? "dash" : "dot";
 }
 
+// 判断是否为"圆形"：正方形 + 圆角半径 ≥ 边长一半 → 直接输出 ellipse 保证真圆
+function isCircleLike(node) {
+  return (
+    typeof node.cornerRadius === "number" &&
+    node.cornerRadius > 0 &&
+    Math.abs(node.width - node.height) < 1 &&
+    node.cornerRadius * 2 >= node.width
+  );
+}
+
+// 仅在 cornerRadius 是有效数字时应用圆角
+function applyRectRadius(opts, node, S) {
+  if (typeof node.cornerRadius === "number" && node.cornerRadius > 0) {
+    opts.rectRadius = pxToIn(node.cornerRadius, S);
+  }
+}
+
 /**
  * 根据序列化后的 frames 创建 PPT 对象。
  * @param {Array} frames 由 code.js 序列化的 Frame 数组
- * @param {Object} settings { slideSize, scaleMode, fileName, onProgress }
+ * @param {Object} settings { slideSize, scalePct, fileName, onProgress }
  */
 export function createPresentation(frames, settings = {}) {
   const size = SLIDE_SIZES[settings.slideSize] || SLIDE_SIZES["16x9"];
-  const scaleMode = settings.scaleMode === "stretch" ? "stretch" : "fit";
+  const scalePct = clampPct(settings.scalePct, 90);
 
   const pptx = new pptxgen();
   pptx.defineLayout({ name: "F2P", width: size.w, height: size.h });
@@ -88,13 +117,20 @@ export function createPresentation(frames, settings = {}) {
   frames.forEach((frame, i) => {
     if (settings.onProgress) settings.onProgress(i + 1, frames.length, frame.name);
     const slide = pptx.addSlide();
-    addFrame(slide, frame, size, scaleMode);
+    addFrame(slide, frame, size, scalePct);
   });
 
   return pptx;
 }
 
-function addFrame(slide, frame, size, scaleMode) {
+// 缩放百分比限制在 1%–100%
+function clampPct(v, def) {
+  const n = parseFloat(v);
+  if (isNaN(n)) return def;
+  return Math.max(1, Math.min(100, n));
+}
+
+function addFrame(slide, frame, size, scalePct) {
   // 页面背景
   const bg = frame.background;
   if (bg) {
@@ -106,25 +142,23 @@ function addFrame(slide, frame, size, scaleMode) {
     }
   }
 
-  // 缩放：fit 等比缩放居中；stretch 拉伸铺满
-  const sx = size.w / frame.width;
-  const sy = size.h / frame.height;
-  const scale = Math.min(sx, sy);
+  // 缩放区域：内容占幻灯片宽/高的比例（等比），Frame 等比缩放居中放入
+  const regionW = (size.w * scalePct) / 100;
+  const regionH = (size.h * scalePct) / 100;
+  const scale = Math.min(regionW / frame.width, regionH / frame.height);
   const offX = (size.w - frame.width * scale) / 2;
   const offY = (size.h - frame.height * scale) / 2;
 
-  const S = { scaleMode, scale, sx, sy, offX, offY };
-  const toX = (px) => (scaleMode === "stretch" ? px * S.sx : offX + px * scale);
-  const toY = (px) => (scaleMode === "stretch" ? px * S.sy : offY + px * scale);
-  const toW = (px) => px * (scaleMode === "stretch" ? S.sx : scale);
-  const toH = (px) => px * (scaleMode === "stretch" ? S.sy : scale);
-  S.toX = toX;
-  S.toY = toY;
+  const S = { scale };
+  const toX = (px) => offX + px * scale;
+  const toY = (px) => offY + px * scale;
+  const toW = (px) => px * scale;
+  const toH = (px) => px * scale;
 
   const walk = (node) => {
     if (!node) return;
     if (node.type === "__IMAGE__") {
-      slide.addImage({ data: node.dataUrl, x: toX(node.absX), y: toY(node.absY), w: toW(node.width), h: toH(node.height) });
+      slide.addImage({ data: node.dataUrl, x: toX(node.absX), y: toY(node.absY), w: toW(posDim(node.width)), h: toH(posDim(node.height)) });
       return;
     }
     if (node.type === "TEXT") {
@@ -136,7 +170,8 @@ function addFrame(slide, frame, size, scaleMode) {
       return;
     }
     if (node.type === "RECTANGLE") {
-      addShape(slide, node, S, toX, toY, toW, toH, node.cornerRadius ? "roundRect" : "rect");
+      // 圆形（正方形+满圆角）→ 直接画椭圆保证真圆；否则按圆角矩形/直角矩形
+      addShape(slide, node, S, toX, toY, toW, toH, isCircleLike(node) ? "ellipse" : node.cornerRadius ? "roundRect" : "rect");
       return;
     }
     if (node.type === "ELLIPSE") {
@@ -154,24 +189,26 @@ function addFrame(slide, frame, size, scaleMode) {
     }
     if (CONTAINER_TYPES.has(node.type)) {
       const fill = solidFill(node.fills && node.fills[0]);
-      if (fill) {
-        const opts = {
-          x: toX(node.absX),
-          y: toY(node.absY),
-          w: toW(node.width),
-          h: toH(node.height),
-          fill,
-        };
-        if (node.opacity != null && node.opacity < 1) opts.transparency = (1 - node.opacity) * 100;
-        if (node.cornerRadius) opts.rectRadius = pxToIn(node.cornerRadius, S);
-        slide.addShape("rect", opts);
+      const stroke = node.strokes && node.strokes[0];
+      // 有填充或描边的容器 → 画一个矩形/圆角矩形（含描边与投影，避免白卡在白底上消失）
+      if (fill || (stroke && stroke.type === "SOLID" && node.strokeWeight > 0)) {
+        const opts = buildShapeOptions(node, S, toX, toY, toW, toH);
+        if (isCircleLike(node)) {
+          slide.addShape("ellipse", opts);
+        } else if (typeof node.cornerRadius === "number" && node.cornerRadius > 0) {
+          applyRectRadius(opts, node, S);
+          // 注意：圆角必须用 roundRect 预设，rect 预设即使带 adj 也会被 PowerPoint 忽略
+          slide.addShape("roundRect", opts);
+        } else {
+          slide.addShape("rect", opts);
+        }
       }
       (node.children || []).forEach(walk);
       return;
     }
     // 兜底：其它类型直接以图片占位
     if (node.dataUrl) {
-      slide.addImage({ data: node.dataUrl, x: toX(node.absX), y: toY(node.absY), w: toW(node.width), h: toH(node.height) });
+      slide.addImage({ data: node.dataUrl, x: toX(node.absX), y: toY(node.absY), w: toW(posDim(node.width)), h: toH(posDim(node.height)) });
     }
   };
 
@@ -203,16 +240,26 @@ function addText(slide, t, S, toX, toY, toW, toH) {
     return { text: seg.characters, options: opts };
   });
 
+  // 设计中的单行文字（含自动宽度与固定框）→ 禁止自动换行(wrap=none)、关闭收缩，
+  // 加宽 20% 并按对齐方式微调 x 保持视觉位置，避免 PPT 回退字体更宽导致误换行。
+  const singleLine = !!t.singleLine;
+  const slack = singleLine ? 0.2 : 0;
   const box = {
     x: toX(t.absX),
     y: toY(t.absY),
-    w: toW(t.width),
+    w: toW(t.width * (1 + slack)),
     h: toH(t.height),
     align: ALIGN_MAP[t.textAlignHorizontal] || "left",
     valign: VALIGN_MAP[t.textAlignVertical] || "top",
-    autoFit: true,
+    autoFit: !singleLine,
+    wrap: !singleLine,
     inset: 0,
   };
+  if (slack > 0) {
+    const grow = toW(t.width * slack);
+    if (t.textAlignHorizontal === "CENTER") box.x = toX(t.absX) - grow / 2;
+    else if (t.textAlignHorizontal === "RIGHT") box.x = toX(t.absX) - grow;
+  }
   if (t.rotation) box.rotate = t.rotation;
 
   const first = segs[0];
@@ -226,7 +273,8 @@ function addText(slide, t, S, toX, toY, toW, toH) {
   slide.addText(runs, box);
 }
 
-function addShape(slide, node, S, toX, toY, toW, toH, preset) {
+// 形状/容器的公共选项：位置、旋转、透明度、填充、描边、投影
+function buildShapeOptions(node, S, toX, toY, toW, toH) {
   const opts = {
     x: toX(node.absX),
     y: toY(node.absY),
@@ -253,10 +301,12 @@ function addShape(slide, node, S, toX, toY, toW, toH, preset) {
   const shadow = dropShadow(node.effects, S);
   if (shadow) opts.shadow = shadow;
 
-  if (preset === "roundRect" && node.cornerRadius) {
-    opts.rectRadius = pxToIn(node.cornerRadius, S);
-  }
+  return opts;
+}
 
+function addShape(slide, node, S, toX, toY, toW, toH, preset) {
+  const opts = buildShapeOptions(node, S, toX, toY, toW, toH);
+  if (preset === "roundRect") applyRectRadius(opts, node, S);
   slide.addShape(preset, opts);
 }
 

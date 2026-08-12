@@ -10,9 +10,9 @@
   :root {
     --border: var(--figma-color-border, rgba(0, 0, 0, 0.08));
     --card-bg: var(--figma-color-bg-secondary, #f5f5f5);
-    --accent: var(--figma-color-bg-brand, #0d99ff);
-    --accent-hover: var(--figma-color-bg-brand-hover, #007be5);
-    --accent-pressed: var(--figma-color-bg-brand-pressed, #0a84e6);
+    --accent: #225dff;
+    --accent-hover: #1a53ff;
+    --accent-pressed: #1621b7;
     --danger: var(--figma-color-text-danger, #f24822);
     --success: var(--figma-color-text-success, #1f9d55);
     --text-sub: var(--figma-color-text-secondary, rgba(0, 0, 0, 0.6));
@@ -20,6 +20,10 @@
   }
 
   html, body { height: 100%; }
+
+  /* 隐藏页面内所有滚动条（含 html 视口、frame-list、debug-out），滚动功能保留 */
+  * { scrollbar-width: none; -ms-overflow-style: none; }
+  *::-webkit-scrollbar { display: none; }
 
   body {
     font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
@@ -56,7 +60,6 @@
   .app-title h1 { font-size: 14px; font-weight: 700; line-height: 1.3; }
   .app-title p { font-size: 11px; color: var(--text-sub); line-height: 1.4; }
   .version {
-    margin-left: auto;
     font-size: 10px;
     color: var(--text-sub);
     border: 1px solid var(--border);
@@ -77,7 +80,7 @@
     gap: 6px;
     margin-bottom: 8px;
   }
-  .card-head h2 { font-size: 11px; font-weight: 700; letter-spacing: 0.2px; }
+  .card-head h2 { font-size: 14px; font-weight: 700; letter-spacing: 0.2px; }
   .card-head svg { color: var(--text-sub); }
 
   .icon-btn {
@@ -125,7 +128,7 @@
     width: 18px;
     height: 18px;
     border-radius: 5px;
-    background: var(--figma-color-bg-brand, #0d99ff);
+    background: var(--accent, #363cf4);
     color: #ffffff;
     font-size: 10px;
     font-weight: 700;
@@ -137,9 +140,10 @@
   .frame-size { flex: none; font-size: 11px; color: var(--text-sub); }
 
   /* ---- 设置 ---- */
-  .field { margin-bottom: 10px; }
+  .field { margin-bottom: 10px; display: flex; align-items: center; gap: 10px; }
   .field:last-child { margin-bottom: 2px; }
-  .field-label { display: block; font-size: 11px; color: var(--text-sub); margin-bottom: 4px; }
+  .field-label { flex: none; width: 76px; font-size: 11px; color: var(--text-sub); }
+  .field > select, .field > .scale-size-row { flex: 1; min-width: 0; }
 
   select, input[type="text"] {
     width: 100%;
@@ -163,9 +167,23 @@
   }
   select:focus, input[type="text"]:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(13, 153, 255, 0.18); }
 
-  .radio-row { display: flex; gap: 14px; }
-  .radio { display: flex; align-items: center; gap: 5px; cursor: pointer; user-select: none; }
-  .radio input { accent-color: var(--accent); width: 13px; height: 13px; }
+  .scale-size-row { display: flex; gap: 10px; }
+  .scale-size { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; font-size: 11px; color: var(--text-sub); }
+  .scale-size input[type="number"] {
+    flex: 1;
+    min-width: 0;
+    height: 26px;
+    padding: 0 6px;
+    font-size: 12px;
+    font-family: inherit;
+    color: var(--figma-color-text, #1e1e1e);
+    background: var(--figma-color-bg, #ffffff);
+    border: 1px solid var(--figma-color-border, rgba(0, 0, 0, 0.15));
+    border-radius: 6px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .scale-size input[type="number"]:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(13, 153, 255, 0.18); }
 
   /* ---- 底部动作 ---- */
   .actions { display: flex; flex-direction: column; gap: 8px; }
@@ -192,21 +210,45 @@
   .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
   .btn-primary.loading { opacity: 0.75; }
 
-  .progress { display: flex; flex-direction: column; gap: 5px; }
-  .progress-track {
-    height: 6px;
-    border-radius: 3px;
-    background: var(--figma-color-bg-tertiary, rgba(0, 0, 0, 0.08));
-    overflow: hidden;
+  .btn-secondary {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 12px;
+    background: var(--figma-color-bg-secondary, #f5f5f5);
+    color: var(--figma-color-text, #1e1e1e);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 12px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.15s;
   }
-  .progress-fill {
-    height: 100%;
-    width: 0%;
-    border-radius: 3px;
-    background: linear-gradient(90deg, var(--accent), #6d5ef0);
-    transition: width 0.25s ease;
+  .btn-secondary:hover { background: var(--figma-color-bg-hover, rgba(0, 0, 0, 0.06)); }
+  .btn-secondary:active { background: var(--figma-color-bg-pressed, rgba(0, 0, 0, 0.1)); }
+
+  .progress { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+  .modal-spinner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--accent);
   }
-  .progress-text { font-size: 11px; color: var(--text-sub); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .modal-spinner svg {
+    will-change: transform; /* 提升为独立合成层，主线程忙时转圈由合成器继续驱动，不随 JS 卡顿 */
+    animation: spin 0.9s linear infinite;
+  }
+  .modal-spinner.done { color: var(--success); }
+  .modal-spinner.done svg { animation: none; }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+  .progress-text { font-size: 12px; font-weight: 500; color: var(--text-sub); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; }
+  .progress-text.success { color: var(--success); }
+  .progress-text.error { color: var(--danger); }
 
   .status {
     display: flex;
@@ -223,11 +265,69 @@
   .status.error { background: rgba(242, 72, 34, 0.1); color: var(--danger); }
   .status.error svg { color: var(--danger); }
 
+  /* ---- 进度弹窗 ---- */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.35);
+  }
+  .modal {
+    width: 300px;
+    max-width: calc(100% - 48px);
+    background: var(--figma-color-bg, #ffffff);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+    padding: 18px 18px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .modal-head {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  .modal-head h2 { font-size: 16px; font-weight: 700; }
+
   .hint {
     font-size: 10.5px;
     color: var(--text-sub);
     line-height: 1.6;
     text-align: center;
+  }
+
+  .debug-area { display: flex; flex-direction: column; gap: 6px; margin-top: auto; }
+  .debug-footer { display: flex; align-items: center; justify-content: space-between; }
+  .debug-btn {
+    padding: 3px 10px;
+    font-size: 10.5px;
+    color: var(--text-sub);
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .debug-btn:hover { color: var(--figma-color-text, #1e1e1e); }
+  .debug-out {
+    max-height: 150px;
+    overflow: auto;
+    padding: 8px;
+    margin: 0;
+    font-size: 10px;
+    line-height: 1.5;
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    color: var(--figma-color-text, #1e1e1e);
+    background: var(--figma-color-bg-tertiary, rgba(0, 0, 0, 0.05));
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    white-space: pre;
   }
 </style>
 </head>
@@ -244,7 +344,6 @@
       <h1>Frame2PPT</h1>
       <p>将 Figma Frame 转换为可编辑 PPT</p>
     </div>
-    <span class="version">v1.0</span>
   </header>
 
   <section class="card">
@@ -257,22 +356,23 @@
         </svg>
       </button>
     </div>
+    <ul id="frameList" class="frame-list hidden"></ul>
     <div id="selectionEmpty" class="empty">
-      <svg viewBox="0 0 48 48" width="36" height="36" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <svg id="selectionEmptyIcon" viewBox="0 0 48 48" width="36" height="36" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
         <rect x="6" y="6" width="36" height="36" rx="4"/>
         <path d="M6 18h36M24 6v36"/>
       </svg>
-      <span>请在画布中选择要转换的 Frame<br />支持多选，每个 Frame 生成一页</span>
+      <span id="selectionEmptyTip">请在画布中选择要转换的 Frame 或其他内容<br />Frame 每个生成一页；无 Frame 时合并为一页</span>
     </div>
-    <ul id="frameList" class="frame-list hidden"></ul>
   </section>
 
   <section class="card">
     <div class="card-head">
       <h2>转换设置</h2>
       <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="8" cy="8" r="2.4"/>
-        <path d="M13 8.6a1 1 0 0 1 .2-1.1l.1-.1a1.5 1.5 0 1 0-2.1-2.1l-.1.1a1 1 0 0 1-1.1.2 1 1 0 0 1-.6-.9V4.5a1.5 1.5 0 1 0-3 0v.1a1 1 0 0 1-.6.9 1 1 0 0 1-1.1-.2l-.1-.1a1.5 1.5 0 1 0-2.1 2.1l.1.1a1 1 0 0 1 .2 1.1 1 1 0 0 1-.9.6H4.5a1.5 1.5 0 1 0 0 3h.1a1 1 0 0 1 .9.6 1 1 0 0 1-.2 1.1l-.1.1a1.5 1.5 0 1 0 2.1 2.1l.1-.1a1 1 0 0 1 1.1-.2 1 1 0 0 1 .6.9v.1a1.5 1.5 0 1 0 3 0v-.1a1 1 0 0 1 .6-.9 1 1 0 0 1 1.1.2l.1.1a1.5 1.5 0 1 0 2.1-2.1l-.1-.1a1 1 0 0 1-.2-1.1 1 1 0 0 1 .9-.6h.1a1.5 1.5 0 1 0 0-3h-.1a1 1 0 0 1-.9-.6Z"/>
+        <circle cx="8" cy="8" r="6.2"/>
+        <circle cx="8" cy="8" r="2.1"/>
+        <path d="M8 1.8V.8M8 14.2v1M1.8 8H.8M14.2 8h1M12.4 3.6l.7-.7M3.6 12.4l-.7.7M12.4 12.4l.7.7M3.6 3.6l-.7-.7"/>
       </svg>
     </div>
     <div class="field">
@@ -285,23 +385,18 @@
       </select>
     </div>
     <div class="field">
-      <span class="field-label">缩放模式</span>
-      <div class="radio-row">
-        <label class="radio"><input type="radio" name="scaleMode" value="fit" checked /><span>自适应居中</span></label>
-        <label class="radio"><input type="radio" name="scaleMode" value="stretch" /><span>拉伸铺满</span></label>
+      <label class="field-label" for="scalePct">缩放比例%</label>
+      <div class="scale-size-row">
+        <label class="scale-size"><input id="scalePct" type="number" min="1" max="100" step="1" value="90" spellcheck="false" /></label>
       </div>
     </div>
     <div class="field">
-      <label class="field-label" for="exportScale">图片导出精度</label>
+      <label class="field-label" for="exportScale">导出精度</label>
       <select id="exportScale">
-        <option value="1">1x</option>
-        <option value="2" selected>2x（推荐）</option>
+        <option value="1" selected>1x</option>
+        <option value="2">2x（推荐）</option>
         <option value="3">3x</option>
       </select>
-    </div>
-    <div class="field">
-      <label class="field-label" for="fileName">文件名</label>
-      <input id="fileName" type="text" value="Frame2PPT" spellcheck="false" />
     </div>
   </section>
 
@@ -314,15 +409,46 @@
       </svg>
       <span>转换并下载 PPT</span>
     </button>
-    <div id="progressWrap" class="progress hidden">
-      <div class="progress-track"><div id="progressFill" class="progress-fill"></div></div>
-      <span id="progressText" class="progress-text">准备中…</span>
-    </div>
     <div id="status" class="status hidden"></div>
   </div>
 
-  <p class="hint">提示：文字、色块、圆形、线条、星形等保持可编辑；复杂矢量、渐变以图片嵌入。</p>
+  <div id="progressModal" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-head">
+        <h2 id="modalTitle">正在转换</h2>
+      </div>
+      <div id="progressWrap" class="progress">
+        <div id="modalSpinner" class="modal-spinner" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
+            <circle cx="12" cy="12" r="9" opacity="0.18"/>
+            <path d="M21 12a9 9 0 0 0-9-9"/>
+          </svg>
+        </div>
+        <span id="progressText" class="progress-text">准备中…</span>
+      </div>
+      <button id="modalCloseBtn" class="btn-secondary hidden">
+        <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 4l8 8M12 4l-8 8"/>
+        </svg>
+        <span>关闭</span>
+      </button>
+      <button id="modalDoneBtn" class="btn-primary hidden">
+        <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="m3 8.5 3.2 3.2L13 5"/>
+        </svg>
+        <span>完成</span>
+      </button>
+    </div>
+  </div>
 
-  <script src="../ui-bundle.js"></script>
+  <div class="debug-area">
+    <div class="debug-footer">
+      <button id="debugBtn" class="debug-btn">诊断节点</button>
+      <span class="version">v1.0.8</span>
+    </div>
+    <pre id="debugOut" class="debug-out hidden"></pre>
+  </div>
+
+  <!--%%UI_BUNDLE%%-->
 </body>
 </html>

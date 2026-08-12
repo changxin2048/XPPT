@@ -2,6 +2,10 @@
   "name": "Frame2PPT",
   "api": "1.0.0",
   "main": "src/code.js",
-  "ui": "src/ui.html",
-  "editorType": ["figma"]
+  "ui": "dist/ui.html",
+  "editorType": ["figma"],
+  "documentAccess": "dynamic-page",
+  "networkAccess": {
+    "allowedDomains": ["none"]
+  }
 }
