@@ -1,5 +1,6 @@
 {
-  "name": "Frame2PPT",
+  "id": "1669699878450550995",
+  "name": "XPPT Figma-to-PPT",
   "api": "1.0.0",
   "main": "src/code.js",
   "ui": "dist/ui.html",

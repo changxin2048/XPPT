@@ -127,7 +127,7 @@ export function createPresentation(frames, settings = {}) {
 function clampPct(v, def) {
   const n = parseFloat(v);
   if (isNaN(n)) return def;
-  return Math.max(1, Math.min(100, n));
+  return Math.max(50, Math.min(100, n));
 }
 
 function addFrame(slide, frame, size, scalePct) {

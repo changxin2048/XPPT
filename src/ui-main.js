@@ -25,6 +25,7 @@ const progressModal = $("#progressModal");
 const modalTitle = $("#modalTitle");
 const modalCloseBtn = $("#modalCloseBtn");
 const modalDoneBtn = $("#modalDoneBtn");
+const scalePctValue = $("#scalePctValue");
 
 // 底部提示：x 为真实数字——选中项数、生成的幻灯片页数
 function buildHintText(itemCount, pageCount) {
@@ -263,8 +264,13 @@ function showModalError(text) {
 function clampPct(v, def) {
   const n = parseFloat(v);
   if (isNaN(n)) return def;
-  return Math.max(1, Math.min(100, Math.round(n)));
+  return Math.max(50, Math.min(100, Math.round(n)));
 }
+
+const scalePctInput = $("#scalePct");
+scalePctInput.addEventListener("input", () => {
+  scalePctValue.textContent = scalePctInput.value + "%";
+});
 
 function getSettings() {
   return {
