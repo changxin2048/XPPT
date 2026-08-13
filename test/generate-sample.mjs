@@ -1,4 +1,4 @@
-// Frame2PPT 转换逻辑的 Node 测试：用模拟的 Frame 数据生成 PPT，并校验结构与内容
+// XPPT 转换逻辑的 Node 测试：用模拟的 Frame 数据生成 PPT，并校验结构与内容
 import fs from "node:fs";
 import JSZip from "jszip";
 import { createPresentation } from "../src/converter.js";

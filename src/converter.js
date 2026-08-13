@@ -1,4 +1,4 @@
-// Frame2PPT 转换核心：将序列化后的 Figma 节点树转换为可编辑的 PPT。
+// XPPT 转换核心：将序列化后的 Figma 节点树转换为可编辑的 PPT。
 // 纯逻辑模块（不依赖 DOM / Figma API），可在浏览器（Custom UI）与 Node（测试）中复用。
 import pptxgen from "pptxgenjs";
 
@@ -110,9 +110,9 @@ export function createPresentation(frames, settings = {}) {
   const pptx = new pptxgen();
   pptx.defineLayout({ name: "F2P", width: size.w, height: size.h });
   pptx.layout = "F2P";
-  pptx.author = "Frame2PPT";
-  pptx.title = settings.fileName || "Frame2PPT";
-  pptx.subject = "由 Figma Frame 转换生成";
+  pptx.author = "XPPT";
+  pptx.title = settings.fileName || "XPPT";
+  pptx.subject = "由 XPPT 转换生成";
 
   frames.forEach((frame, i) => {
     if (settings.onProgress) settings.onProgress(i + 1, frames.length, frame.name);

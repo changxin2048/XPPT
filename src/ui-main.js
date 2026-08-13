@@ -1,4 +1,4 @@
-// Frame2PPT — Custom UI 逻辑
+// XPPT — Custom UI 逻辑
 import { createPresentation } from "./converter.js";
 
 const $ = (s) => document.querySelector(s);
@@ -26,28 +26,34 @@ const modalTitle = $("#modalTitle");
 const modalCloseBtn = $("#modalCloseBtn");
 const modalDoneBtn = $("#modalDoneBtn");
 
-const HINT_TEXT = "提示：文字、图形等保持可编辑；复杂矢量、渐变以图片嵌入。";
-const EMPTY_TIP_TEXT = "请在画布中选择要转换的 Frame 或其他内容<br />Frame 每个生成一页；无 Frame 时合并为一页";
+// 底部提示：x 为真实数字——选中项数、生成的幻灯片页数
+function buildHintText(itemCount, pageCount) {
+  return "已选择 " + itemCount + " 项，将转成 " + pageCount + " 页幻灯片";
+}
+const EMPTY_TIP_TEXT = "请在画布中选择要转换的 Frame 或其他内容";
 
-// 默认文件名取自选中元素：单个用其名称，多个取首尾名称用“-”连接；兜底才用 Frame2PPT
+// 与主线程预估阈值保持一致，仅用于组装警告文案
+const WARN_LEVELS = { nodes: 5000, text: 500, images: 100, pixels: 32 * 1024 * 1024, pages: 8 };
+
+// 默认文件名取自选中元素：单个用其名称，多个取首尾名称用“-”连接；兜底才用 XPPT
 function sanitizeFileName(name) {
   const clean = String(name == null ? "" : name)
     .replace(/[\\/:*?"<>|\x00-\x1f]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-  return clean || "Frame2PPT";
+  return clean || "XPPT";
 }
 
 function deriveFileName(list, debug) {
   let names = [];
   if (debug && debug.names && debug.names.length) names = debug.names;
   else if (list && list.length) names = list.map((f) => f.name);
-  if (!names.length) return "Frame2PPT";
+  if (!names.length) return "XPPT";
   const safe = names.map(sanitizeFileName);
   return safe.length > 1 ? safe[0] + "-" + safe[safe.length - 1] : safe[0];
 }
 
-let derivedFileName = "Frame2PPT"; // 默认下载文件名（用户可在浏览器下载时自行修改）
+let derivedFileName = "XPPT"; // 默认下载文件名（用户可在浏览器下载时自行修改）
 
 function rememberDefaultFileName(list, debug) {
   derivedFileName = deriveFileName(list, debug);
@@ -60,7 +66,10 @@ function escapeHtml(s) {
 window.onmessage = (event) => {
   const msg = event.data.pluginMessage;
   if (!msg) return;
-  if (msg.type === "selection") renderSelection(msg.frames || [], msg.debug);
+  if (msg.type === "selection") {
+    renderSelection(msg.frames || [], msg.debug);
+    renderSizeWarn(msg.estimate);
+  }
   else if (msg.type === "progress") renderProgress(msg);
   else if (msg.type === "data") generateAndDownload(msg.frames || [], msg.fileName);
   else if (msg.type === "error") {
@@ -78,11 +87,54 @@ function renderDebugTree(msg) {
     lines.push("  ".repeat(n.depth) + n.type + ' "' + (n.name || "") + '" -> ' + (n.reason || "?"));
   });
   out.textContent = lines.join("\n");
-  out.classList.remove("hidden");
+  $("#debugWrap").classList.remove("hidden");
 }
 
-// 通知主线程 UI 已就绪，主动拉取当前画布选择（修复启动时首条消息丢失的问题）
-parent.postMessage({ pluginMessage: { type: "ui-ready" } }, "*");
+$("#copyDebugBtn").addEventListener("click", () => {
+  const text = $("#debugOut").textContent || "";
+  const copyToClipboard = () => {
+    if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text);
+    // Figma 插件环境中可能无 Clipboard API，回退到 execCommand
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    ta.remove();
+    return Promise.resolve();
+  };
+  copyToClipboard().then(() => {
+    const label = $("#copyDebugBtn").querySelector("span");
+    const old = label.textContent;
+    label.textContent = "已复制";
+    setTimeout(() => { label.textContent = old; }, 1200);
+  });
+});
+
+// 通知主线程 UI 已就绪（带上当前设置，同步导出精度到转换成本预估），主动拉取当前画布选择
+parent.postMessage({ pluginMessage: { type: "ui-ready", settings: getSettings() } }, "*");
+
+// 根据主线程预估，在转换前提示"内容较大、预计耗时较长"
+function renderSizeWarn(estimate) {
+  const el = $("#sizeWarn");
+  const text = $("#sizeWarnText");
+  if (!estimate || !estimate.heavy) {
+    el.classList.add("hidden");
+    return;
+  }
+  const gte = (v, cap) => (estimate.capped && v >= cap ? "≥" : "") + v;
+  const parts = [];
+  if (estimate.pages >= WARN_LEVELS.pages) parts.push(estimate.pages + " 页幻灯片");
+  if (estimate.nodeCount >= WARN_LEVELS.nodes) parts.push(gte(estimate.nodeCount, WARN_LEVELS.nodes) + " 个节点");
+  if (estimate.textCount >= WARN_LEVELS.text) parts.push(estimate.textCount + " 段文字");
+  if (estimate.imageCount >= WARN_LEVELS.images) parts.push(gte(estimate.imageCount, WARN_LEVELS.images) + " 张图片导出");
+  if (estimate.imagePixels >= WARN_LEVELS.pixels) parts.push((estimate.imagePixels / 1024 / 1024).toFixed(1) + " MP 图片导出");
+  if (!parts.length) parts.push("内容较大");
+  text.textContent = "检测到转换内容较大（" + parts.join(" · ") + "），预计耗时较长，请耐心等待";
+  el.classList.remove("hidden");
+}
 
 function renderSelection(list, debug) {
   frames = list;
@@ -101,7 +153,7 @@ function renderSelection(list, debug) {
         '<span class="frame-size">' + debug.total + " 个节点 · 合并 1 页</span>";
       frameList.appendChild(li);
       selectionEmptyIcon.classList.add("hidden");
-      selectionEmptyTip.innerHTML = HINT_TEXT;
+      selectionEmptyTip.innerHTML = buildHintText(debug.total, 1);
       rememberDefaultFileName(list, debug);
       convertBtn.disabled = false;
       return;
@@ -124,8 +176,21 @@ function renderSelection(list, debug) {
       '<span class="frame-size">' + f.width + "×" + f.height + "</span>";
     frameList.appendChild(li);
   });
+  // 混选：Frame 之外的其他节点合并为一页
+  if (debug && debug.otherCount > 0) {
+    const name = debug.othersName || "其他内容";
+    const li = document.createElement("li");
+    li.className = "frame-item";
+    li.innerHTML =
+      '<span class="frame-idx">' + (list.length + 1) + '</span>' +
+      '<span class="frame-name" title="' + escapeHtml(name) + '">' + escapeHtml(name) + '</span>' +
+      '<span class="frame-size">' + debug.otherCount + " 个节点 · 合并 1 页</span>";
+    frameList.appendChild(li);
+  }
   selectionEmptyIcon.classList.add("hidden");
-  selectionEmptyTip.innerHTML = HINT_TEXT;
+  const itemCount = (debug && debug.total) || list.length;
+  const pageCount = list.length + ((debug && debug.otherCount > 0) ? 1 : 0);
+  selectionEmptyTip.innerHTML = buildHintText(itemCount, pageCount);
   rememberDefaultFileName(list, debug);
   convertBtn.disabled = false;
 }
@@ -233,7 +298,7 @@ modalDoneBtn.addEventListener("click", () => {
 });
 
 $("#rescanBtn").addEventListener("click", () => {
-  parent.postMessage({ pluginMessage: { type: "rescan" } }, "*");
+  parent.postMessage({ pluginMessage: { type: "rescan", settings: getSettings() } }, "*");
 });
 
 $("#debugBtn").addEventListener("click", () => {
@@ -246,7 +311,7 @@ async function generateAndDownload(dataFrames, fileName) {
     const pptx = createPresentation(dataFrames, {
       slideSize: settings.slideSize,
       scalePct: settings.scalePct,
-      fileName: fileName || "Frame2PPT",
+      fileName: fileName || "XPPT",
       onProgress: (index, total, name) => renderProgress({ index, total, name }),
     });
     setProgressText("正在生成 PPTX 文件…", undefined, "正在生成");
@@ -264,7 +329,7 @@ async function generateAndDownload(dataFrames, fileName) {
     // 下载已触发：弹窗内提示成功，不自动关闭；用户点击「完成」后关闭弹窗
     showModalSuccess("已生成 " + dataFrames.length + " 页幻灯片，文件开始下载");
   } catch (e) {
-    console.error("[Frame2PPT]", e);
+    console.error("[XPPT]", e);
     showModalError((e && e.message) || "PPT 生成失败");
   } finally {
     setBusy(false);

@@ -1,4 +1,4 @@
-// Frame2PPT — Figma 插件主线程
+// XPPT — Figma 插件主线程
 // 负责：读取选中内容（Frame 每页一个；无 Frame 时合并为一页）→ 加载字体 → 序列化节点树（含图片导出）→ 传给 Custom UI 生成 PPT
 
 const FRAME_TYPES = ["FRAME", "COMPONENT", "INSTANCE", "COMPONENT_SET"];
@@ -17,6 +17,33 @@ function u8ToDataUrl(bytes, mime) {
     binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
   }
   return "data:" + mime + ";base64," + btoa(binary);
+}
+
+// figma.mixed → null，避免内部符号进入序列化数据
+const plainOrNull = (v) => (v === figma.mixed ? null : v);
+
+// postMessage 前的防御性清洗：figma.mixed 等内部符号无法跨桥结构化克隆，
+// 全部替换为 null，避免 "Cannot unwrap symbol"（混排字体/混色文字节点会泄漏该符号）
+function sanitizeForPost(value, depth) {
+  if (value === figma.mixed) return null;
+  if (Array.isArray(value)) {
+    const out = new Array(value.length);
+    for (let i = 0; i < value.length; i++) out[i] = sanitizeForPost(value[i], depth + 1);
+    return out;
+  }
+  if (value && typeof value === "object") {
+    if (depth > 40) return value;
+    const out = {};
+    for (const k of Object.keys(value)) {
+      try {
+        out[k] = sanitizeForPost(value[k], depth + 1);
+      } catch (_) {
+        out[k] = null;
+      }
+    }
+    return out;
+  }
+  return value;
 }
 
 // ---------- 图片导出优化：超大内容自动降倍 + 不透明背景用 JPEG ----------
@@ -258,12 +285,12 @@ function buildText(node, common) {
     const fill = node.fills && node.fills[0];
     out.segments.push({
       characters: applyTextCase(node.characters, node.textCase),
-      fontName: node.fontName,
+      fontName: plainOrNull(node.fontName),
       fontSize: node.fontSize,
       fontWeight: null,
-      textDecoration: node.textDecoration,
-      letterSpacing: node.letterSpacing,
-      lineHeight: node.lineHeight,
+      textDecoration: plainOrNull(node.textDecoration),
+      letterSpacing: plainOrNull(node.letterSpacing),
+      lineHeight: plainOrNull(node.lineHeight),
       fill: fill ? serializeFills([fill])[0] : null,
     });
   }
@@ -410,40 +437,112 @@ async function serializeVirtualFrame(nodes, exportScale) {
   return root;
 }
 
+// ---------- 转换成本预估 ----------
+
+// 预估封顶值：超过即截断并标记 capped，保证预估遍历本身不会拖慢 UI
+const ESTIMATE_CAPS = { nodes: 30000, images: 300 };
+const HEAVY_NODES = 5000;   // 节点数
+const HEAVY_TEXT = 500;     // 文字节点数
+const HEAVY_IMAGES = 100;   // 需导出图片数
+const HEAVY_PIXELS = 32 * 1024 * 1024; // 图片导出像素预算（按实际倍率，≈32MP）
+const HEAVY_PAGES = 8;      // 幻灯片页数
+
+// 最近一次已知的导出倍率（UI 默认 1x；切换精度/重新扫描后刷新），
+// 让预估像素与实际导出一致，避免固定按 2x 高估
+let lastExportScale = 1;
+
+// 转换前对选中内容做一次同步、有上限的成本预估：节点总数 / 文字节点数 /
+// 需导出图片数 / 图片导出像素量。全部为纯属性读取（无 async、无导出），
+// 达到阈值即截断，避免预估本身成为新的性能负担。
+// 像素量按实际导出倍率 + adaptiveScale 上限估算，近似渲染成本而非文件体积：
+// 扁平矢量 PNG 压缩极好，实际 PPT 体积远小于像素量。
+function estimateSelectionCost(nodes, exportScale) {
+  const scale = exportScale > 0 ? exportScale : 1;
+  let nodeCount = 0, textCount = 0, imageCount = 0, imagePixels = 0, capped = false;
+  const walk = (n) => {
+    if (capped) return;
+    nodeCount++;
+    if (nodeCount > ESTIMATE_CAPS.nodes) { capped = true; return; }
+    if (n.type === "TEXT") textCount++;
+    const rot = typeof n.rotation === "number" ? n.rotation : 0;
+    if (shouldExportAsImage(n) || (rot !== 0 && !!n.children)) {
+      imageCount++;
+      if (imageCount > ESTIMATE_CAPS.images) { capped = true; return; }
+      const s = adaptiveScale(n, scale); // 与实际导出一致：超限自动降倍
+      const w = finiteDim(n.width, 1);
+      const h = finiteDim(n.height, 1);
+      imagePixels += w * h * s * s;
+    }
+    if (n.children) {
+      for (const c of n.children) {
+        if (c.type === "SLICE") continue;
+        walk(c);
+      }
+    }
+  };
+  (nodes || []).forEach(walk);
+  return {
+    nodeCount,
+    textCount,
+    imageCount,
+    imagePixels,
+    capped,
+    heavy:
+      capped ||
+      nodeCount >= HEAVY_NODES ||
+      textCount >= HEAVY_TEXT ||
+      imageCount >= HEAVY_IMAGES ||
+      imagePixels >= HEAVY_PIXELS,
+  };
+}
+
 // ---------- 主流程 ----------
 
 function defaultFileName(count) {
   const d = new Date();
   const p = (n) => String(n).padStart(2, "0");
-  return "Frame2PPT-" + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + "-" + p(d.getHours()) + p(d.getMinutes()) + (count ? "-" + count + "p" : "");
+  return "XPPT-" + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + "-" + p(d.getHours()) + p(d.getMinutes()) + (count ? "-" + count + "p" : "");
 }
 
 function updateSelection() {
   const sel = figma.currentPage.selection || [];
   const frames = sel.filter((n) => FRAME_TYPES.indexOf(n.type) >= 0);
+  const others = sel.filter((n) => FRAME_TYPES.indexOf(n.type) < 0);
+  // 转换成本预估：选中变化时同步计算一次，供 UI 在转换前提示"内容较大、耗时较长"
+  const estimate = estimateSelectionCost(sel, lastExportScale);
+  estimate.pages = frames.length + (others.length ? 1 : 0);
+  if (estimate.pages >= HEAVY_PAGES) estimate.heavy = true;
   figma.ui.postMessage({
     type: "selection",
     frames: frames.map((f) => ({ id: f.id, name: f.name, width: Math.round(f.width), height: Math.round(f.height) })),
-    debug: { total: sel.length, types: sel.map((n) => n.type), names: sel.map((n) => n.name) },
+    debug: {
+      total: sel.length,
+      types: sel.map((n) => n.type),
+      names: sel.map((n) => n.name),
+      otherCount: others.length,
+      othersName: (others[0] && others[0].name) || "其他内容",
+    },
+    estimate,
   });
 }
 
 async function convertSelection(nodes, exportScale) {
+  if (!nodes.length) throw new Error("请先选择要转换的内容");
   const frames = nodes.filter((n) => FRAME_TYPES.indexOf(n.type) >= 0);
-  if (!frames.length) {
-    // 无 Frame：将选中内容合并为一页
-    if (!nodes.length) throw new Error("请先选择要转换的内容");
-    const name = (nodes[0] && nodes[0].name) || "选中内容";
-    await loadFonts(nodes);
-    figma.ui.postMessage({ type: "progress", index: 1, total: 1, name });
-    return [await serializeVirtualFrame(nodes, exportScale)];
-  }
-  await loadFonts(frames);
+  const others = nodes.filter((n) => FRAME_TYPES.indexOf(n.type) < 0);
+  // Frame 每个一页；混选时其余非 Frame 节点（分组/图形等）合并为一页，避免被静默丢弃
+  const total = frames.length + (others.length ? 1 : 0);
+  await loadFonts(nodes);
   const out = [];
   for (let i = 0; i < frames.length; i++) {
     const f = frames[i];
-    figma.ui.postMessage({ type: "progress", index: i + 1, total: frames.length, name: f.name });
+    figma.ui.postMessage({ type: "progress", index: i + 1, total, name: f.name });
     out.push(await serializeFrame(f, exportScale));
+  }
+  if (others.length) {
+    const name = (others[0] && others[0].name) || "其他内容";
+    figma.ui.postMessage({ type: "progress", index: frames.length + 1, total, name });
+    out.push(await serializeVirtualFrame(others, exportScale));
   }
   return out;
 }
@@ -460,12 +559,12 @@ setTimeout(updateSelection, 300);
 
 figma.ui.onmessage = async (msg) => {
   if (!msg || !msg.type) return;
-  if (msg.type === "ui-ready") {
+  if (msg.type === "ui-ready" || msg.type === "rescan") {
+    // 同步 UI 当前导出精度，使转换成本预估与实际导出倍率一致
+    if (msg.settings && Number(msg.settings.exportScale) > 0) {
+      lastExportScale = Math.min(4, Math.max(1, Number(msg.settings.exportScale)));
+    }
     // Custom UI 加载完成后主动拉取一次当前选择，避免启动时首条消息丢失
-    updateSelection();
-    return;
-  }
-  if (msg.type === "rescan") {
     updateSelection();
     return;
   }
@@ -482,6 +581,7 @@ figma.ui.onmessage = async (msg) => {
   if (msg.type === "convert") {
     const settings = msg.settings || {};
     const exportScale = Math.min(4, Math.max(1, Number(settings.exportScale) || 2));
+    lastExportScale = exportScale;
     const selected = figma.currentPage.selection;
     if (!selected.length) {
       figma.ui.postMessage({ type: "error", message: "请先在画布中选择要转换的内容。" });
@@ -490,9 +590,9 @@ figma.ui.onmessage = async (msg) => {
     try {
       const data = await convertSelection(selected, exportScale);
       const fileName = (settings.fileName && settings.fileName.trim()) || defaultFileName(data.length);
-      figma.ui.postMessage({ type: "data", frames: data, fileName: fileName });
+      figma.ui.postMessage({ type: "data", frames: sanitizeForPost(data, 0), fileName: fileName });
     } catch (e) {
-      console.error("[Frame2PPT]", e);
+      console.error("[XPPT]", e);
       figma.ui.postMessage({ type: "error", message: (e && e.message) || "转换失败，请重试。" });
     }
   }

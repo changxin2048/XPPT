@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Frame2PPT</title>
+<title>XPPT</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -82,6 +82,38 @@
   }
   .card-head h2 { font-size: 14px; font-weight: 700; letter-spacing: 0.2px; }
   .card-head svg { color: var(--text-sub); }
+  .hint-icon {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    cursor: help;
+  }
+  .hint-icon::after {
+    content: attr(data-tip);
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    width: max-content;
+    max-width: 230px;
+    background: var(--figma-color-bg-inverse, #2c2c2c);
+    color: var(--figma-color-text-oninverse, #ffffff);
+    padding: 6px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    line-height: 1.5;
+    white-space: normal;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.12s ease;
+    pointer-events: none;
+    z-index: 30;
+  }
+  .hint-icon:hover::after,
+  .hint-icon:focus-visible::after {
+    opacity: 1;
+    visibility: visible;
+  }
 
   .icon-btn {
     margin-left: auto;
@@ -106,12 +138,13 @@
     flex-direction: column;
     align-items: center;
     gap: 8px;
-    padding: 18px 8px;
+    padding: 18px 8px 0;
     text-align: center;
     color: var(--text-sub);
     line-height: 1.6;
   }
   .empty svg { color: var(--figma-color-icon-secondary, rgba(0, 0, 0, 0.4)); }
+  .empty #selectionEmptyTip { color: var(--accent); }
 
   .frame-list { list-style: none; display: flex; flex-direction: column; gap: 4px; max-height: 132px; overflow-y: auto; }
   .frame-item {
@@ -138,6 +171,21 @@
   }
   .frame-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
   .frame-size { flex: none; font-size: 11px; color: var(--text-sub); }
+
+  /* 转换成本预估警告 */
+  .size-warn {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin-top: 8px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    line-height: 1.55;
+    background: var(--figma-color-bg-warning, rgba(255, 165, 0, 0.12));
+    color: var(--figma-color-text-warning, #b06000);
+  }
+  .size-warn svg { flex: none; margin-top: 1px; }
 
   /* ---- 设置 ---- */
   .field { margin-bottom: 10px; display: flex; align-items: center; gap: 10px; }
@@ -315,6 +363,17 @@
     font-family: inherit;
   }
   .debug-btn:hover { color: var(--figma-color-text, #1e1e1e); }
+  .debug-wrap { position: relative; }
+  .debug-copy-btn {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    z-index: 1;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--figma-color-bg, #ffffff);
+  }
   .debug-out {
     max-height: 150px;
     overflow: auto;
@@ -341,14 +400,21 @@
       </svg>
     </div>
     <div class="app-title">
-      <h1>Frame2PPT</h1>
-      <p>将 Figma Frame 转换为可编辑 PPT</p>
+      <h1>XPPT</h1>
+      <p>将 Figma 转换为可编辑 PPT</p>
     </div>
   </header>
 
   <section class="card">
     <div class="card-head">
-      <h2>画布选择</h2>
+      <h2>选择</h2>
+      <span class="hint-icon" data-tip="转为PPT后，文字、图形等保持可编辑；复杂矢量、渐变以图片嵌入。" tabindex="0">
+        <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="8" cy="8" r="6.2"/>
+          <path d="M6.3 6.3a1.9 1.9 0 1 1 2.6 1.8c-.7.4-.9.7-.9 1.5"/>
+          <path d="M8 11.4h.01"/>
+        </svg>
+      </span>
       <button id="rescanBtn" class="icon-btn" title="重新获取选中的 Frame">
         <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
           <path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/>
@@ -362,7 +428,15 @@
         <rect x="6" y="6" width="36" height="36" rx="4"/>
         <path d="M6 18h36M24 6v36"/>
       </svg>
-      <span id="selectionEmptyTip">请在画布中选择要转换的 Frame 或其他内容<br />Frame 每个生成一页；无 Frame 时合并为一页</span>
+      <span id="selectionEmptyTip">请在画布中选择要转换的 Frame 或其他内容</span>
+    </div>
+    <div id="sizeWarn" class="size-warn hidden">
+      <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M8 2.4 14.6 13H1.4L8 2.4Z"/>
+        <path d="M8 6.4v3"/>
+        <path d="M8 11.5h.01"/>
+      </svg>
+      <span id="sizeWarnText"></span>
     </div>
   </section>
 
@@ -446,7 +520,12 @@
       <button id="debugBtn" class="debug-btn">诊断节点</button>
       <span class="version">v1.0.8</span>
     </div>
-    <pre id="debugOut" class="debug-out hidden"></pre>
+    <div id="debugWrap" class="debug-wrap hidden">
+      <button id="copyDebugBtn" class="debug-btn debug-copy-btn" title="一键复制诊断内容">
+        <span>复制</span>
+      </button>
+      <pre id="debugOut" class="debug-out"></pre>
+    </div>
   </div>
 
   <!--%%UI_BUNDLE%%-->
