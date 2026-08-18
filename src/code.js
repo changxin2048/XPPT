@@ -420,9 +420,9 @@ function selectionBounds(nodes) {
 // 无 Frame 时：把选中的任意节点虚拟包装成一页（不修改画布）
 async function serializeVirtualFrame(nodes, exportScale) {
   const box = selectionBounds(nodes);
-  if (!box) throw new Error("无法确定选中内容的边界");
+  if (!box) throw new Error(L("无法确定选中内容的边界", "Cannot determine the bounds of the selected content"));
   const root = {
-    name: (nodes[0] && nodes[0].name) || "选中内容",
+    name: (nodes[0] && nodes[0].name) || L("选中内容", "Selected content"),
     width: box.width,
     height: box.height,
     background: null,
@@ -450,6 +450,10 @@ const HEAVY_PAGES = 8;      // 幻灯片页数
 // 最近一次已知的导出倍率（UI 默认 1x；切换精度/重新扫描后刷新），
 // 让预估像素与实际导出一致，避免固定按 2x 高估
 let lastExportScale = 1;
+
+// UI 语言（默认中文）：由 ui-ready/rescan/convert 同步，用于本地化主线程产出的用户可见文案
+let uiLang = "zh";
+function L(zh, en) { return uiLang === "en" ? en : zh; }
 
 // 转换前对选中内容做一次同步、有上限的成本预估：节点总数 / 文字节点数 /
 // 需导出图片数 / 图片导出像素量。全部为纯属性读取（无 async、无导出），
@@ -520,14 +524,14 @@ function updateSelection() {
       types: sel.map((n) => n.type),
       names: sel.map((n) => n.name),
       otherCount: others.length,
-      othersName: (others[0] && others[0].name) || "其他内容",
+      othersName: (others[0] && others[0].name) || L("其他内容", "Other content"),
     },
     estimate,
   });
 }
 
 async function convertSelection(nodes, exportScale) {
-  if (!nodes.length) throw new Error("请先选择要转换的内容");
+  if (!nodes.length) throw new Error(L("请先选择要转换的内容", "Please select content to convert"));
   const frames = nodes.filter((n) => FRAME_TYPES.indexOf(n.type) >= 0);
   const others = nodes.filter((n) => FRAME_TYPES.indexOf(n.type) < 0);
   // Frame 每个一页；混选时其余非 Frame 节点（分组/图形等）合并为一页，避免被静默丢弃
@@ -540,7 +544,7 @@ async function convertSelection(nodes, exportScale) {
     out.push(await serializeFrame(f, exportScale));
   }
   if (others.length) {
-    const name = (others[0] && others[0].name) || "其他内容";
+    const name = (others[0] && others[0].name) || L("其他内容", "Other content");
     figma.ui.postMessage({ type: "progress", index: frames.length + 1, total, name });
     out.push(await serializeVirtualFrame(others, exportScale));
   }
@@ -560,6 +564,9 @@ setTimeout(updateSelection, 300);
 figma.ui.onmessage = async (msg) => {
   if (!msg || !msg.type) return;
   if (msg.type === "ui-ready" || msg.type === "rescan") {
+    // 同步 UI 语言（主线程产出的用户可见文案随之本地化）
+    if (msg.settings && msg.settings.lang === "en") uiLang = "en";
+    else uiLang = "zh";
     // 同步 UI 当前导出精度，使转换成本预估与实际导出倍率一致
     if (msg.settings && Number(msg.settings.exportScale) > 0) {
       lastExportScale = Math.min(4, Math.max(1, Number(msg.settings.exportScale)));
@@ -580,11 +587,14 @@ figma.ui.onmessage = async (msg) => {
   }
   if (msg.type === "convert") {
     const settings = msg.settings || {};
+    // 同步 UI 语言
+    if (settings.lang === "en") uiLang = "en";
+    else uiLang = "zh";
     const exportScale = Math.min(4, Math.max(1, Number(settings.exportScale) || 2));
     lastExportScale = exportScale;
     const selected = figma.currentPage.selection;
     if (!selected.length) {
-      figma.ui.postMessage({ type: "error", message: "请先在画布中选择要转换的内容。" });
+      figma.ui.postMessage({ type: "error", message: L("请先在画布中选择要转换的内容。", "Please select content on the canvas first.") });
       return;
     }
     try {
@@ -593,7 +603,7 @@ figma.ui.onmessage = async (msg) => {
       figma.ui.postMessage({ type: "data", frames: sanitizeForPost(data, 0), fileName: fileName });
     } catch (e) {
       console.error("[XPPT]", e);
-      figma.ui.postMessage({ type: "error", message: (e && e.message) || "转换失败，请重试。" });
+      figma.ui.postMessage({ type: "error", message: (e && e.message) || L("转换失败，请重试。", "Conversion failed, please retry.") });
     }
   }
 };
