@@ -1,6 +1,6 @@
 {
   "name": "XPPT",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "type": "module",
   "description": "Figma Custom UI 插件：将选中的 Frame 转换为可编辑 PPT 并下载",
